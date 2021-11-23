@@ -24,7 +24,17 @@ class ThrusterAllocator
 public:
   ThrusterAllocator(rclcpp::Node *node);
 
-  void publish(const Vector6d & wrench);
+  inline void stop()
+  {
+    for(auto &v: thruster_cmd.velocity)
+      v = 0;
+    publish();
+  }
+  inline void publish(const Vector6d & wrench)
+  {
+     robot.solveWrench(wrench, thruster_cmd.velocity);
+     publish();
+  }
   inline void publish(Vector6d wrench, const Eigen::Matrix3d &R, const Vector6d &vel)
   {
     robot.compensate(wrench, R, vel);
@@ -39,8 +49,10 @@ private:
   // model interface
   IAUV robot;
 
-  sensor_msgs::msg::JointState thrusts;
-  rclcpp::Publisher<decltype (thrusts)>::SharedPtr cmd_pub;
+  sensor_msgs::msg::JointState thruster_cmd;
+  rclcpp::Publisher<decltype (thruster_cmd)>::SharedPtr cmd_pub;
+
+  void publish();
 
 #ifdef WITH_IAUV_GAZEBO_PLUGINS
   // will forward thrust command to each UUV Gazebo topics

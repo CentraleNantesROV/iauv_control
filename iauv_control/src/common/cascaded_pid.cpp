@@ -43,14 +43,14 @@ std::string CascadedPID::tuneFromParam(const rclcpp::Parameter &param)
 double CascadedPID::update()
 {
   // actual PID is here
-  double e{vel_sp - vel};
+  double e{Kv*(vel_sp - vel)};
   if(use_position)
     e += std::clamp(Kp*(position_sp-position), -v_sat, v_sat);
 
   if(std::abs(cmd_integral) < u_sat)
     cmd_integral += Ki*dt*e;
 
-  const auto cmd{cmd_integral + Kv*e + Kd/dt*(vel-vel_prev)};
+  const auto cmd{cmd_integral + e - Kd/dt*(vel-vel_prev)};
 
   vel_prev = vel;
   return std::clamp(cmd, -u_sat, u_sat);

@@ -1,7 +1,7 @@
 #include <iauv_control/controller_io.h>
 #include <iauv_control/multi_cascaded_pid.h>
-
 #include <sensor_msgs/msg/joint_state.hpp>
+
 
 namespace iauv_control
 {
@@ -19,13 +19,14 @@ public:
     const auto ns = string{get_namespace()};
 
     initControllers(ns, cmd_period);
-    std::cout << "BodyPID running" << std::endl;
-  }
+      }
 
-
-  Vector6d computeWrench() override
+  Vector6d computeWrench(const Vector6d &se3_error) override
   {
     static const std::array<std::string, 6> axis{"x","y","z","roll","pitch","yaw"};
+
+    Vector6d wrench;
+    wrench.setZero();
     // call PIDs
     for(uint i = 0; i < 6; ++i)
     {
@@ -35,14 +36,10 @@ public:
 
       pid.vel = vel[i];
       pid.vel_sp = vel_setpoint[i];
-      pid.position = 0;
-      pid.position_sp = pose_error[i];
-
-
+      pid.position_sp = se3_error[i]; // current position is always 0 as we are in local frame
+      wrench[i] = pid.update();
     }
-
-
-    return {};
+    return wrench;
   }
 
 private:

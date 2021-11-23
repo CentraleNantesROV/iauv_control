@@ -25,12 +25,12 @@ public:
   std::vector<std::string> parseModel(const std::string &ns);
 
   void compensate(Vector6d &wrench, const Eigen::Matrix3d &R, const Vector6d &vel) const;
-  void solveWrench(const Vector6d &wrench, std::vector<double> &thrusts) const;
+  void solveWrench(const Vector6d &wrench, std::vector<double> &omega) const;
 
   uint n_thr;
   double buoyancy;
   MatrixX6d tam_pinv;
-  Eigen::VectorXd max_thrusts;
+  std::vector<double> max_thrusts, rotor_constants;
   Vector6d max_wrench,quad_drag, lin_drag;
   Eigen::Matrix<double, 6, 6> Ma, Mi;
   Eigen::Vector3d cog, cob;
@@ -44,7 +44,7 @@ private:
 
   // read an element inside a tag
   template <typename T>
-  static bool readFromSequence(TiXmlElement* root,
+  static bool readFromTags(TiXmlElement* root,
                        std::vector<std::string> tag_sequence,
                        T & val)
   {
@@ -58,7 +58,7 @@ private:
       }
       return false;
     }
-    return readFromSequence(root->FirstChildElement(tag_sequence.front().c_str()),
+    return readFromTags(root->FirstChildElement(tag_sequence.front().c_str()),
     {tag_sequence.begin()+1, tag_sequence.end()},
              val);
   }
@@ -67,7 +67,7 @@ private:
                        std::string tag,
                        T & val)
   {
-    return readFromSequence(root, {tag}, val);
+    return readFromTags(root, {tag}, val);
   }
 
   template <typename T>
@@ -84,7 +84,7 @@ private:
                   Eigen::Matrix<double, rows, cols> & M)
   {
     std::string values;
-    readFromSequence(root, tag_sequence, values);
+    readFromTags(root, tag_sequence, values);
     std::istringstream iss(values);
     for(uint row = 0; row < rows; ++row)
     {

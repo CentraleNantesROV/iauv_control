@@ -5,8 +5,8 @@
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <gazebo_msgs/srv/apply_joint_effort.hpp>
 #include <iauv_control/service_sync.h>
-
 #include <iauv_control/model_parser.h>
+#include <iauv_control/param_overrides.h>
 
 using namespace std;
 using sensor_msgs::msg::JointState;
@@ -28,10 +28,7 @@ public:
   {       
     // used for Gazebo joints
     const auto ns = string{get_namespace()};
-    if(has_parameter("model_name"))
-      get_parameter("model_name", gz_prefix);
-    else
-      gz_prefix = declare_parameter("model_name", ns.substr(1)) + "::";
+    declare_param_if_needed(this, "model_name", gz_prefix, ns.substr(1) + "::");
 
     setpoint_sub = create_subscription<JointState>("joint_setpoint", 2, [&](JointState::UniquePtr msg)
     {updateJS(*msg, Update::SETPOINT);});

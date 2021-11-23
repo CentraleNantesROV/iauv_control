@@ -27,21 +27,34 @@ public:
 
 protected:
 
-  struct PoseError : public Vector6d
+  struct Pose
   {
-    inline void from(const geometry_msgs::msg::Point &t, const geometry_msgs::msg::Quaternion &q)
-    {     
-      data()[0] = t.x;
-      data()[1] = t.y;
-      data()[2] = t.z;
-      Eigen::AngleAxisd aa{Eigen::Quaterniond(q.w, q.x, q.y, q.z)};
-      tail<3>() = aa.axis() * aa.angle();
+    Eigen::Vector3d t;
+    Eigen::Matrix3d R;
+
+    inline static void tf2Rotation(const geometry_msgs::msg::Quaternion &q, Eigen::Matrix3d &orientation)
+    {
+      orientation = Eigen::Quaterniond(q.w,q.x,q.y,q.z).toRotationMatrix();
     }
+    inline void changeFrame(const Pose &rel)
+    {
+      t = rel.t  + rel.R*t;
+      R = rel.R*R;
+    }
+    template<class Translation>
+    void from(const Translation &t, const geometry_msgs::msg::Quaternion &q)
+    {
+      this->t.x() = t.x;
+      this->t.y() = t.y;
+      this->t.z() = t.z;
+      tf2Rotation(q, R);
+    }
+    Vector6d toSE3() const;
   };
 
   tf2_ros::Buffer tf_buffer;
   tf2_ros::TransformListener tf_listener;
-  Eigen::Isometry3d relPose(const std::string &frame);
+  Pose relPose(const std::string &frame);
 
   // setpoints
   std::string control_frame;
@@ -50,7 +63,7 @@ protected:
   rclcpp::Subscription<TwistStamped>::SharedPtr vel_sub;
   void velSetpointCallback(const TwistStamped &twist);
   Vector6d vel_setpoint;
-  PoseError pose_error;
+  Pose pose_error;
 
   // odom estim
   rclcpp::Subscription<Odometry>::SharedPtr odom_sub;
@@ -68,7 +81,7 @@ protected:
   ThrusterAllocator allocator;
 
   // actual-controller-dependent
-  virtual Vector6d computeWrench() = 0;
+  virtual Vector6d computeWrench(const Vector6d &se3_error) = 0;
 
   // timeouts
   double pose_setpoint_time{0};

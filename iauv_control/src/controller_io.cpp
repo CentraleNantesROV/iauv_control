@@ -1,4 +1,6 @@
 #include <iauv_control/controller_io.h>
+#include <iauv_control/param_overrides.h>
+
 #include <Eigen/Geometry>
 
 #include <chrono>
@@ -16,19 +18,13 @@ void twist2Eigen(const geometry_msgs::msg::Twist &twist, Vector6d &vel)
   vel[5] = twist.angular.z;
 }
 
-void tf2Rotation(const geometry_msgs::msg::Quaternion &q,
-                            Eigen::Matrix3d &orientation)
+Vector6d ControllerIO::Pose::toSE3() const
 {
-  orientation = Eigen::Quaterniond(q.w,q.x,q.y,q.z).toRotationMatrix();
-}
-
-void tf2Eigen(const geometry_msgs::msg::Vector3 &t, const geometry_msgs::msg::Quaternion &q,
-              Eigen::Isometry3d &pose)
-{
-  pose.translation().x() = t.x;
-  pose.translation().y() = t.y;
-  pose.translation().z() = t.z;
-  pose.linear() = Eigen::Quaterniond(q.w,q.x,q.y,q.z).toRotationMatrix();
+  Vector6d se3_error;
+  se3_error.head<3>() = t;
+  const Eigen::AngleAxisd aa{R};
+  se3_error.tail<3>() = aa.axis() * aa.angle();
+  return se3_error;
 }
 
 ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
@@ -39,9 +35,9 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
 {
 
   control_frame = get_namespace();
-  control_frame = declare_parameter<std::string>("control_frame", control_frame.substr(1) + "/base_link");
+  declare_param_if_needed(this, "control_frame", control_frame, control_frame.substr(1) + "/base_link");
 
-  use_feedforward = declare_parameter<bool>("use_feedforward", false);
+  declare_param_if_needed(this, "use_feedforward", use_feedforward, false);
 
   pose_sub = create_subscription<PoseStamped>("cmd_pose", 10, [&](PoseStamped::SharedPtr msg)
   {poseSetpointCallback(*msg);});
@@ -49,7 +45,7 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
   {velSetpointCallback(*msg);});
   odom_sub = create_subscription<Odometry>("pose_gt", 10, [&](Odometry::SharedPtr msg)
   {twist2Eigen(msg->twist.twist, vel);
-             tf2Rotation(msg->pose.pose.orientation, orientation);
+             Pose::tf2Rotation(msg->pose.pose.orientation, orientation);
 });
 
   control_srv = create_service<ControlMode>
@@ -60,7 +56,9 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
     control_mode = request->mode;
   });
 
-  cmd_period = std::chrono::milliseconds(declare_parameter<int>("control_period_ms", 50));
+  int cmd_period_ms;
+  declare_param_if_needed(this, "control_period_ms", cmd_period_ms, 100);
+  cmd_period = std::chrono::milliseconds(cmd_period_ms);
   cmd_timer = create_wall_timer(cmd_period, [&](){publishThrust();});
 
 }
@@ -69,26 +67,36 @@ void ControllerIO::publishThrust()
 {
   // correct setpoints according to timestamps
   const auto now_s{get_clock()->now().seconds()};
-  if(pose_setpoint_time - now_s > pose_setpoint_timeout)
-    pose_error.setZero();
+  const auto pose_timeout{now_s - pose_setpoint_time > pose_setpoint_timeout};
+  const auto vel_timeout{now_s - vel_setpoint_time  > vel_setpoint_timeout};
 
-  if(vel_setpoint_time - now_s > vel_setpoint_timeout)
-    vel_setpoint.setZero(); 
+  auto se3_error{pose_error.toSE3()};
+
+  if(pose_timeout)
+    se3_error.setZero();
+
+  if(vel_timeout)
+    vel_setpoint.setZero();
+
+  if(pose_timeout && vel_timeout)
+  {
+    // no more setpoints: stop thrusters
+    allocator.stop();
+    return;
+  }
 
   // check control mode
   if(control_mode == ControlMode::Request::VELOCITY)
   {
-    pose_error.setZero();
+    se3_error.setZero();
   }
   else if(control_mode == ControlMode::Request::DEPTH)
   {
     // position mode only for Z, roll, pitch
-    pose_error[0] = pose_error[1] = pose_error[5] = 0.;
+    se3_error[0] = se3_error[1] = se3_error[5] = 0.;
   }
 
-  const auto wrench{computeWrench()};
-
-  std::cout << "Applying wrench " << wrench.transpose() << std::endl;
+  const auto wrench{computeWrench(se3_error)};
 
   if(use_feedforward)
     allocator.publish(wrench, orientation, vel);
@@ -96,15 +104,15 @@ void ControllerIO::publishThrust()
     allocator.publish(wrench);
 }
 
-Eigen::Isometry3d ControllerIO::relPose(const std::string &frame)
+ControllerIO::Pose ControllerIO::relPose(const std::string &frame)
 {
-  static Eigen::Isometry3d rel_pose;
+  static Pose rel_pose;
 
   static geometry_msgs::msg::Transform tf;
   if(tf_buffer.canTransform(control_frame, frame, tf2::TimePointZero, 10ms))
   {
     tf = tf_buffer.lookupTransform(control_frame, frame, tf2::TimePointZero, 10ms).transform;
-    tf2Eigen(tf.translation, tf.rotation, rel_pose);
+    rel_pose.from(tf.translation, tf.rotation);
   }
   return rel_pose;
 }
@@ -113,13 +121,11 @@ void ControllerIO::poseSetpointCallback(const PoseStamped &pose)
 {
   // to Eigen
   pose_error.from(pose.pose.position, pose.pose.orientation);
-
   // to vehicle frame if needed
   if(pose.header.frame_id != control_frame)
   {
     const auto rel_pose{relPose(pose.header.frame_id)};
-    pose_error.head<3>() = rel_pose * pose_error.head<3>();
-    pose_error.tail<3>() = rel_pose.linear() * pose_error.tail<3>();
+    pose_error.changeFrame(rel_pose);
   }
   pose_setpoint_time = get_clock()->now().seconds();
 }
@@ -132,7 +138,7 @@ void ControllerIO::velSetpointCallback(const TwistStamped &twist)
   // to vehicle frame if needed
   if(twist.header.frame_id != control_frame)
   {
-    const auto R{relPose(twist.header.frame_id).linear()};
+    const auto R{relPose(twist.header.frame_id).R};
     vel_setpoint.head<3>() = R * vel_setpoint.head<3>();
     vel_setpoint.tail<3>() = R * vel_setpoint.tail<3>();
   }

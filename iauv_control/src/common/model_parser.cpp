@@ -118,6 +118,7 @@ void IAUV::parseThrusterMap(TiXmlElement* root, const ThrusterJoints &thrusters)
 
   // build max thrust per-thruster
   max_thrusts.resize(n_thr);
+  rotor_constants.resize(n_thr);
 
   for(auto plugin: findNamedPlugins(root, "libuuv_thruster_ros_plugin.so"))
   {
@@ -125,8 +126,10 @@ void IAUV::parseThrusterMap(TiXmlElement* root, const ThrusterJoints &thrusters)
        joint != nullptr && thrusters.find(joint->GetText()) != thrusters.end())
     {
       const auto idx{readFromTag<uint>(plugin, "thrusterID")};
-      if(!readFromTag(plugin, "thrustMax", max_thrusts(idx)))
-        max_thrusts(idx) = 0;
+      if(!readFromTag(plugin, "thrustMax", max_thrusts[idx]))
+        max_thrusts[idx] = 0;
+      if(!readFromTags(plugin, {"conversion", "rotorConstant"}, rotor_constants[idx]))
+        rotor_constants[idx] = 0.003;
     }
   }
 
@@ -150,7 +153,7 @@ void IAUV::parseThrusterMap(TiXmlElement* root, const ThrusterJoints &thrusters)
   {
     max_wrench(dir) = 0.;
     for(size_t t = 0; t < n_thr; ++t)
-      max_wrench(dir) += max_thrusts(t) * std::abs(tam(dir, t));
+      max_wrench(dir) += max_thrusts[t] * std::abs(tam(dir, t));
   }
 }
 
@@ -179,7 +182,7 @@ void IAUV::parseHydrodynamics(TiXmlElement* root, const std::string &base_link)
       // net buoyancy + CoB
       const auto density{readFromTag<double>(plugin, "fluid_density")};
       const auto volume{readFromTag<double>(link, "volume")};
-      buoyancy = volume * density;
+      buoyancy = volume * density * 9.81;
       readMatrix(link, {"center_of_buoyancy"}, cob);
 
       readMatrix(link, {"hydrodynamic_model", "added_mass"}, Ma);
@@ -195,7 +198,7 @@ void IAUV::compensate(Vector6d &wrench, const Eigen::Matrix3d &R, const Vector6d
   const auto grav{R.transpose() * Eigen::Vector3d{0,0,-9.81*Mi(0,0)}};
   const auto buoy{R.transpose() * Eigen::Vector3d{0,0,buoyancy}};
   wrench.head<3>() -= grav + buoy;
-  wrench.tail<3>() -= cog.cross(grav) + cog.cross(buoy);
+  wrench.tail<3>() -= cog.cross(grav) + cob.cross(buoy);
 
   // drag
   for(uint i = 0; i < 6; ++i)
@@ -205,7 +208,7 @@ void IAUV::compensate(Vector6d &wrench, const Eigen::Matrix3d &R, const Vector6d
 
 }
 
-void IAUV::solveWrench(const Vector6d &wrench, std::vector<double> &thrusts) const
+void IAUV::solveWrench(const Vector6d &wrench, std::vector<double> &omega) const
 {
   // map to thrusts
   const auto thr{tam_pinv * wrench};
@@ -213,16 +216,25 @@ void IAUV::solveWrench(const Vector6d &wrench, std::vector<double> &thrusts) con
   //saturate
   double scale{1.};
   for(uint i = 0; i < n_thr; ++i)
-    scale = std::max(scale, thr(i)/max_thrusts(i));
+    scale = std::max(scale, std::abs(thr(i))/max_thrusts[i]);
   if(scale > 1.)
   {
     for (uint i = 0; i < n_thr; ++i)
-      thrusts[i] = thr(i)/scale;
+      omega[i] = thr(i)/scale;
   }
   else
   {
     for (uint i = 0; i < n_thr; ++i)
-      thrusts[i] = thr(i);
+      omega[i] = thr(i);
+  }
+
+  // to angular velocity
+  for(uint i = 0; i < n_thr; ++i)
+  {
+    if(omega[i] > 0)
+      omega[i] = sqrt(omega[i])/rotor_constants[i];
+    else
+      omega[i] = -sqrt(-omega[i])/rotor_constants[i];
   }
 }
 

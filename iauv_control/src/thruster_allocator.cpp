@@ -7,9 +7,9 @@ using namespace iauv_control;
 ThrusterAllocator::ThrusterAllocator(rclcpp::Node *node) : node(node)
 {
   // get thrusters TM and max thrusts
-  thrusts.name = robot.parseModel(node->get_namespace());
+  thruster_cmd.name = robot.parseModel(node->get_namespace());
 
-  thrusts.effort.resize(robot.n_thr);
+  thruster_cmd.velocity.resize(robot.n_thr);
 
   // init publishers to robot
   cmd_pub = node->create_publisher<sensor_msgs::msg::JointState>("thruster_command",1);
@@ -23,28 +23,18 @@ ThrusterAllocator::ThrusterAllocator(rclcpp::Node *node) : node(node)
 #endif
 }
 
-
-void ThrusterAllocator::publish(const Vector6d &wrench)
+void ThrusterAllocator::publish()
 {
   const auto now = node->get_clock()->now();
-
-  // embedded part
-  robot.solveWrench(wrench, thrusts.effort);
-
-  std::cout << "thrusts: ";
-  for(const auto &v: thrusts.effort)
-    std::cout << v << " ";
-  std::cout << std::endl;
-
-  thrusts.header.set__stamp(now);
-  cmd_pub->publish(thrusts);
+  thruster_cmd.header.set__stamp(now);
+  cmd_pub->publish(thruster_cmd);
 
   // Gz part
 #ifdef WITH_IAUV_GAZEBO_PLUGINS
   cmd_gz.header.set__stamp(now);
   for(size_t i = 0; i < robot.n_thr; ++i)
   {
-    cmd_gz.set__data(thrusts.effort[i]);
+    cmd_gz.set__data(thruster_cmd.velocity[i]);
     cmd_gz_pub[i]->publish(cmd_gz);
   }
 #endif
