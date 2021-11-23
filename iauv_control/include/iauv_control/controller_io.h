@@ -10,7 +10,7 @@
 
 #include <eigen3/Eigen/Geometry>
 #include <iauv_control/thruster_allocator.h>
-#include <iauv_control/srv/control.hpp>
+#include <iauv_control_msgs/srv/control.hpp>
 
 namespace iauv_control
 {
@@ -18,6 +18,7 @@ namespace iauv_control
 using geometry_msgs::msg::PoseStamped;
 using geometry_msgs::msg::TwistStamped;
 using nav_msgs::msg::Odometry;
+using ControlMode = iauv_control_msgs::srv::Control;
 
 class ControllerIO : public rclcpp::Node
 {  
@@ -35,10 +36,6 @@ protected:
       data()[2] = t.z;
       Eigen::AngleAxisd aa{Eigen::Quaterniond(q.w, q.x, q.y, q.z)};
       tail<3>() = aa.axis() * aa.angle();
-    }
-    inline auto& translation()
-    {
-      return head<3>();
     }
   };
 
@@ -64,8 +61,8 @@ protected:
   // command
   std::chrono::milliseconds cmd_period;
   bool use_feedforward = false;
-  rclcpp::Service<srv::Control>::SharedPtr control_srv;
-  decltype (srv::Control_Request::mode) control_mode;
+  rclcpp::Service<ControlMode>::SharedPtr control_srv;
+  decltype (ControlMode::Request::mode) control_mode;
   rclcpp::TimerBase::SharedPtr cmd_timer;
   void publishThrust();  
   ThrusterAllocator allocator;

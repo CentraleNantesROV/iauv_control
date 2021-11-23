@@ -5,7 +5,6 @@
 
 using namespace iauv_control;
 using namespace std::chrono_literals;
-using ControlMode = srv::Control::Request;
 
 void twist2Eigen(const geometry_msgs::msg::Twist &twist, Vector6d &vel)
 {
@@ -53,10 +52,10 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
              tf2Rotation(msg->pose.pose.orientation, orientation);
 });
 
-  control_srv = create_service<srv::Control>
+  control_srv = create_service<ControlMode>
                 ("control_mode",
-                 [&](const srv::Control::Request::SharedPtr request,
-                 [[maybe_unused]] srv::Control::Response::SharedPtr response)
+                 [&](const ControlMode::Request::SharedPtr request,
+                 [[maybe_unused]] ControlMode::Response::SharedPtr response)
   {
     control_mode = request->mode;
   });
@@ -77,16 +76,14 @@ void ControllerIO::publishThrust()
     vel_setpoint.setZero();
 
   // check control mode
-  if(control_mode == ControlMode::VELOCITY)
+  if(control_mode == ControlMode::Request::VELOCITY)
   {
     pose_error.setZero();
   }
-  else if(control_mode == ControlMode::DEPTH)
+  else if(control_mode == ControlMode::Request::DEPTH)
   {
     // position mode only for Z, roll, pitch
-    pose_error.translation.x() = 0;
-    pose_error.translation.y() = 0;
-    pose_error.orientation.z() = 0;
+    pose_error[0] = pose_error[1] = pose_error[5] = 0.;
   }
 
   const auto wrench{computeWrench()};
@@ -121,8 +118,8 @@ void ControllerIO::poseSetpointCallback(const PoseStamped &pose)
   if(pose.header.frame_id != control_frame)
   {
     const auto rel_pose{relPose(pose.header.frame_id)};
-    pose_error.translation = rel_pose * pose_error.translation;
-    pose_error.orientation = rel_pose.linear() * pose_error.orientation;
+    pose_error.head<3>() = rel_pose * pose_error.head<3>();
+    pose_error.tail<3>() = rel_pose.linear() * pose_error.tail<3>();
   }
   pose_setpoint_time = get_clock()->now().seconds();
 }
