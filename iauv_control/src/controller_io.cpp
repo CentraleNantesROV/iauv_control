@@ -73,7 +73,7 @@ void ControllerIO::publishThrust()
     pose_error.setZero();
 
   if(vel_setpoint_time - now_s > vel_setpoint_timeout)
-    vel_setpoint.setZero();
+    vel_setpoint.setZero(); 
 
   // check control mode
   if(control_mode == ControlMode::Request::VELOCITY)
