@@ -31,6 +31,11 @@ void ThrusterAllocator::publish(const Vector6d &wrench)
   // embedded part
   robot.solveWrench(wrench, thrusts.effort);
 
+  std::cout << "thrusts: ";
+  for(const auto &v: thrusts.effort)
+    std::cout << v << " ";
+  std::cout << std::endl;
+
   thrusts.header.set__stamp(now);
   cmd_pub->publish(thrusts);
 

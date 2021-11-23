@@ -30,7 +30,7 @@ public:
   {
     for(const auto &pid: pids)
     {
-      printf("- %s: Kp = %f, Kv = %f, Ki = %f, Kd = %f, v_sat = %f, u_sat = %f",
+      printf("- %s: Kp = %f, Kv = %f, Ki = %f, Kd = %f, v_sat = %f, u_sat = %f\n",
              pid.axis.c_str(), pid.Kp, pid.Kv, pid.Ki, pid.Kd, pid.v_sat, pid.u_sat);
     }
   }

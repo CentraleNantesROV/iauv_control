@@ -42,14 +42,13 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
   control_frame = get_namespace();
   control_frame = declare_parameter<std::string>("control_frame", control_frame.substr(1) + "/base_link");
 
-
   use_feedforward = declare_parameter<bool>("use_feedforward", false);
 
   pose_sub = create_subscription<PoseStamped>("cmd_pose", 10, [&](PoseStamped::SharedPtr msg)
   {poseSetpointCallback(*msg);});
   vel_sub = create_subscription<TwistStamped>("cmd_vel", 10, [&](TwistStamped::SharedPtr msg)
   {velSetpointCallback(*msg);});
-  odom_sub = create_subscription<Odometry>("odom", 10, [&](Odometry::SharedPtr msg)
+  odom_sub = create_subscription<Odometry>("pose_gt", 10, [&](Odometry::SharedPtr msg)
   {twist2Eigen(msg->twist.twist, vel);
              tf2Rotation(msg->pose.pose.orientation, orientation);
 });
@@ -91,6 +90,8 @@ void ControllerIO::publishThrust()
   }
 
   const auto wrench{computeWrench()};
+
+  std::cout << "Applying wrench " << wrench.transpose() << std::endl;
 
   if(use_feedforward)
     allocator.publish(wrench, orientation, vel);

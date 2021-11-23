@@ -19,12 +19,27 @@ public:
     const auto ns = string{get_namespace()};
 
     initControllers(ns, cmd_period);
+    std::cout << "BodyPID running" << std::endl;
   }
 
 
   Vector6d computeWrench() override
   {
+    static const std::array<std::string, 6> axis{"x","y","z","roll","pitch","yaw"};
     // call PIDs
+    for(uint i = 0; i < 6; ++i)
+    {
+      const auto pid_opt{whoControls(axis[i])};
+      if(!pid_opt.has_value()) continue;
+      auto & pid{*(pid_opt.value())};
+
+      pid.vel = vel[i];
+      pid.vel_sp = vel_setpoint[i];
+      pid.position = 0;
+      pid.position_sp = pose_error[i];
+
+
+    }
 
 
     return {};
@@ -45,7 +60,7 @@ private:
       if(max_wrench[i] > 1e-3)
       {
         // the AUV can move in this direction
-        pids.emplace_back(axis, 1., 0.4, 0.1, 0, std::numeric_limits<double>::max(), max_wrench[i]);
+        pids.emplace_back(axis, 1., 0.4, 0.1, 0, std::numeric_limits<double>::infinity(), max_wrench[i]);
       }
     }
   }

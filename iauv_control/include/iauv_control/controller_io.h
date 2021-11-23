@@ -26,21 +26,19 @@ public:
 
 protected:
 
-  struct PoseError
+  struct PoseError : public Vector6d
   {
-    Eigen::Vector3d translation, orientation;
     inline void from(const geometry_msgs::msg::Point &t, const geometry_msgs::msg::Quaternion &q)
-    {
-      translation.x() = t.x;
-      translation.y() = t.y;
-      translation.z() = t.z;
+    {     
+      data()[0] = t.x;
+      data()[1] = t.y;
+      data()[2] = t.z;
       Eigen::AngleAxisd aa{Eigen::Quaterniond(q.w, q.x, q.y, q.z)};
-      orientation = aa.axis() * aa.angle();
+      tail<3>() = aa.axis() * aa.angle();
     }
-    inline void setZero()
+    inline auto& translation()
     {
-      translation.setZero();
-      orientation.setZero();
+      return head<3>();
     }
   };
 

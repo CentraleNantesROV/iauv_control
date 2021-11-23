@@ -15,13 +15,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(urdf REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
+find_package(iauv_control_msgs REQUIRED)
 find_package(uuv_gazebo_ros_plugins_msgs)
 find_package(gazebo_msgs)
 
 find_package(Eigen3 REQUIRED)
-
-rosidl_generate_interfaces(${PROJECT_NAME} "srv/Control.srv")
 
 # Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
@@ -46,8 +44,7 @@ ament_target_dependencies(control_common rclcpp urdf)
 # base control node for interface
 add_library(controller_io SHARED src/controller_io.cpp src/thruster_allocator.cpp)
 target_link_libraries(controller_io control_common)
-ament_target_dependencies(controller_io rclcpp sensor_msgs geometry_msgs nav_msgs tf2_ros urdf ${IAUV_PLUGINS_MSGS})
-rosidl_target_interfaces(controller_io ${PROJECT_NAME} "rosidl_typesupport_cpp")
+ament_target_dependencies(controller_io iauv_control_msgs rclcpp sensor_msgs geometry_msgs nav_msgs tf2_ros urdf ${IAUV_PLUGINS_MSGS})
 
 # Body cascaded PID
 add_executable(body_pid src/body_pid.cpp)
