@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(iauv_control)
+project(iauv_control_teleop)
 
 find_package(ament_cmake REQUIRED)
 
