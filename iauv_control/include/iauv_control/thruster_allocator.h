@@ -35,9 +35,9 @@ public:
      robot.solveWrench(wrench, thruster_cmd.velocity);
      publish();
   }
-  inline void publish(Vector6d wrench, const Eigen::Matrix3d &R, const Vector6d &vel)
+  inline void publish(Vector6d wrench, const Eigen::Quaterniond &q, const Vector6d &vel)
   {
-    robot.compensate(wrench, R, vel);
+    robot.compensate(wrench, q, vel);
     publish(wrench);
   }
 

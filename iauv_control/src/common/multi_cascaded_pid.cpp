@@ -12,9 +12,9 @@ void MultiCascadedPID::initControllers(const std::string &ns, std::chrono::milli
     // declare corresponding params
     for(const auto &pid: pids)
     {
-    for(const auto &[gain, value]: pid.gainsParams())
-      node->declare_parameter(gain, value);
-    node->declare_parameter(pid.axis + ".use_position", pid.use_position);
+      for(const auto &[gain, value]: pid.gainsParams())
+        node->declare_parameter(gain, value);
+      node->declare_parameter(pid.axis + ".use_position", pid.use_position);
     }
   }
 
@@ -39,7 +39,13 @@ rcl_interfaces::msg::SetParametersResult MultiCascadedPID::tuneFromParams(const 
   for(const auto &param: parameters)
   {
     for(auto &pid: pids)
-      result.reason += pid.tuneFromParam(param);
+    {
+      if(pid.hasGain(param.get_name()))
+      {
+        result.reason += pid.tuneFromParam(param);
+        break;
+      }
+    }
   }
 
   result.successful = result.reason.empty();

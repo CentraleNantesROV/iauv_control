@@ -30,16 +30,19 @@ protected:
   struct Pose
   {
     Eigen::Vector3d t;
-    Eigen::Matrix3d R;
+    Eigen::Quaterniond q;
 
-    inline static void tf2Rotation(const geometry_msgs::msg::Quaternion &q, Eigen::Matrix3d &orientation)
+    inline static void tf2Rotation(const geometry_msgs::msg::Quaternion &q, Eigen::Quaterniond &qe)
     {
-      orientation = Eigen::Quaterniond(q.w,q.x,q.y,q.z).toRotationMatrix();
+      qe.x() = q.x;
+      qe.y() = q.y;
+      qe.z() = q.z;
+      qe.w() = q.w;
+
     }
-    inline void changeFrame(const Pose &rel)
+    inline Pose operator*(const Pose &other) const
     {
-      t = rel.t  + rel.R*t;
-      R = rel.R*R;
+      return {t + q*other.t, q*other.q};
     }
     template<class Translation>
     void from(const Translation &t, const geometry_msgs::msg::Quaternion &q)
@@ -47,9 +50,16 @@ protected:
       this->t.x() = t.x;
       this->t.y() = t.y;
       this->t.z() = t.z;
-      tf2Rotation(q, R);
+      tf2Rotation(q, this->q);
     }
     Vector6d toSE3() const;
+  };
+
+  template<class Setpoint>
+  struct StampedSetpoint : public Setpoint
+  {
+    std::string frame;
+    double time{0};
   };
 
   tf2_ros::Buffer tf_buffer;
@@ -62,14 +72,14 @@ protected:
   void poseSetpointCallback(const PoseStamped &pose);
   rclcpp::Subscription<TwistStamped>::SharedPtr vel_sub;
   void velSetpointCallback(const TwistStamped &twist);
-  Vector6d vel_setpoint;
-  Pose pose_error;
+  StampedSetpoint<Vector6d> vel_setpoint;
+  StampedSetpoint<Pose> pose_setpoint;
 
   // odom estim
   rclcpp::Subscription<Odometry>::SharedPtr odom_sub;
   bool state_ok{false};
   Vector6d vel;
-  Eigen::Matrix3d orientation;
+  Eigen::Quaterniond orientation;
 
   // command
   std::chrono::milliseconds cmd_period;
@@ -84,8 +94,6 @@ protected:
   virtual Vector6d computeWrench(const Vector6d &se3_error) = 0;
 
   // timeouts
-  double pose_setpoint_time{0};
-  double vel_setpoint_time{0};
   double pose_setpoint_timeout{1};
   double vel_setpoint_timeout{.1};
 };

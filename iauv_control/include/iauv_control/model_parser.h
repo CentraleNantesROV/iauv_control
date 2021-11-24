@@ -3,6 +3,7 @@
 
 #include <iauv_control/eigen_typedefs.h>
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <urdf_parser/urdf_parser.h>
 #include <tinyxml.h>
 
@@ -24,7 +25,7 @@ public:
   // actual parsing of hydrodynamic model
   std::vector<std::string> parseModel(const std::string &ns);
 
-  void compensate(Vector6d &wrench, const Eigen::Matrix3d &R, const Vector6d &vel) const;
+  void compensate(Vector6d &wrench, const Eigen::Quaterniond &q, const Vector6d &vel) const;
   void solveWrench(const Vector6d &wrench, std::vector<double> &omega) const;
 
   uint n_thr;

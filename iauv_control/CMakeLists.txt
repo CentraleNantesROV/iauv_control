@@ -50,6 +50,10 @@ ament_target_dependencies(controller_io iauv_control_msgs rclcpp sensor_msgs geo
 add_executable(body_pid src/body_pid.cpp)
 target_link_libraries(body_pid control_common controller_io)
 
+# Body sliding mode
+add_executable(body_sm src/body_sm.cpp)
+target_link_libraries(body_sm control_common controller_io)
+
 # Joint PID for Gazebo
 if(${gazebo_msgs_FOUND})
     add_executable(joint_gz_pid src/joint_gz_pid.cpp)
@@ -69,13 +73,10 @@ endif()
 #  PLUGIN "map_simulator::SimulatorNode"
 #  EXECUTABLE simulator)
 
-install(TARGETS controller_io control_common body_pid
+install(TARGETS controller_io control_common body_pid body_sm
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION share/${PROJECT_NAME})
-
-install(DIRECTORY launch 
-  DESTINATION share/${PROJECT_NAME})
   
 install(PROGRAMS src/scripts/to_fixed_joints.py
   DESTINATION lib/${PROJECT_NAME})

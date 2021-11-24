@@ -1,6 +1,5 @@
 #include <iauv_control/controller_io.h>
 #include <iauv_control/multi_cascaded_pid.h>
-#include <sensor_msgs/msg/joint_state.hpp>
 
 
 namespace iauv_control
@@ -11,10 +10,8 @@ using std::vector;
 
 class BodyPID : public ControllerIO, public MultiCascadedPID
 {
-
-  sensor_msgs::msg::JointState js;
 public:
-  BodyPID() : ControllerIO("body_control"), MultiCascadedPID(this)
+  BodyPID() : ControllerIO("body_control_pid"), MultiCascadedPID(this)
   {
     const auto ns = string{get_namespace()};
 
@@ -38,6 +35,9 @@ public:
       pid.vel_sp = vel_setpoint[i];
       pid.position_sp = se3_error[i]; // current position is always 0 as we are in local frame
       wrench[i] = pid.update();
+
+      std::cout << " - " << axis[i] << " integral: " << pid.integralTerm() << std::endl;
+
     }
     return wrench;
   }

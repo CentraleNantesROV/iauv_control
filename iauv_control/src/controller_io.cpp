@@ -22,8 +22,20 @@ Vector6d ControllerIO::Pose::toSE3() const
 {
   Vector6d se3_error;
   se3_error.head<3>() = t;
-  const Eigen::AngleAxisd aa{R};
-  se3_error.tail<3>() = aa.axis() * aa.angle();
+
+  const double sin_theta_over_2 = sqrt(q.x()*q.x() + q.y()*q.y() + q.z()*q.z());
+  if(sin_theta_over_2 < 1e-6)
+    se3_error.tail<3>().setZero();
+  else
+  {
+    se3_error[3] = q.x();
+    se3_error[4] = q.y();
+    se3_error[5] = q.z();
+    se3_error.tail<3>() *= 2*atan2(sin_theta_over_2, q.w())/sin_theta_over_2;
+  }
+
+  //const Eigen::AngleAxisd aa{q};
+  //se3_error.tail<3>() = aa.axis() * aa.angle();
   return se3_error;
 }
 
@@ -33,7 +45,6 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
          .allow_undeclared_parameters(true)),
     tf_buffer(this->get_clock()), tf_listener(tf_buffer), allocator(this)
 {
-
   control_frame = get_namespace();
   declare_param_if_needed(this, "control_frame", control_frame, control_frame.substr(1) + "/base_link");
 
@@ -60,23 +71,14 @@ ControllerIO::ControllerIO(std::string name, rclcpp::NodeOptions options)
   declare_param_if_needed(this, "control_period_ms", cmd_period_ms, 100);
   cmd_period = std::chrono::milliseconds(cmd_period_ms);
   cmd_timer = create_wall_timer(cmd_period, [&](){publishThrust();});
-
 }
 
 void ControllerIO::publishThrust()
 {
   // correct setpoints according to timestamps
   const auto now_s{get_clock()->now().seconds()};
-  const auto pose_timeout{now_s - pose_setpoint_time > pose_setpoint_timeout};
-  const auto vel_timeout{now_s - vel_setpoint_time  > vel_setpoint_timeout};
-
-  auto se3_error{pose_error.toSE3()};
-
-  if(pose_timeout)
-    se3_error.setZero();
-
-  if(vel_timeout)
-    vel_setpoint.setZero();
+  const auto pose_timeout{now_s - pose_setpoint.time > pose_setpoint_timeout};
+  const auto vel_timeout{now_s - vel_setpoint.time  > vel_setpoint_timeout};
 
   if(pose_timeout && vel_timeout)
   {
@@ -85,12 +87,35 @@ void ControllerIO::publishThrust()
     return;
   }
 
-  // check control mode
-  if(control_mode == ControlMode::Request::VELOCITY)
+  Vector6d se3_error;
+  se3_error.setZero();
+  if(!pose_timeout && control_mode != ControlMode::Request::VELOCITY)
   {
-    se3_error.setZero();
+    if(pose_setpoint.frame == control_frame)
+      se3_error = pose_setpoint.toSE3();
+    else // to vehicle frame if needed
+    {
+      se3_error = (relPose(pose_setpoint.frame) * pose_setpoint).toSE3();
+      std::cout << "pose error in " << control_frame
+                << ": " << se3_error.head<3>().transpose()
+                << " " << 180/M_PI*se3_error.tail<3>().transpose() << std::endl;
+    }
   }
-  else if(control_mode == ControlMode::Request::DEPTH)
+
+  Vector6d vel_setpoint_local;
+  if(vel_timeout)
+    vel_setpoint_local.setZero();
+  else if(vel_setpoint.frame == control_frame || vel_setpoint.isApproxToConstant(0, 1e-3))
+    vel_setpoint_local = vel_setpoint;
+  else // to vehicle frame if needed
+  {
+    const auto q{relPose(vel_setpoint.frame).q};
+    vel_setpoint_local.head<3>() = q * vel_setpoint.head<3>();
+    vel_setpoint_local.tail<3>() = q * vel_setpoint.tail<3>();
+  }
+
+  // hybrid control mode
+  if(control_mode == ControlMode::Request::DEPTH)
   {
     // position mode only for Z, roll, pitch
     se3_error[0] = se3_error[1] = se3_error[5] = 0.;
@@ -106,8 +131,7 @@ void ControllerIO::publishThrust()
 
 ControllerIO::Pose ControllerIO::relPose(const std::string &frame)
 {
-  static Pose rel_pose;
-
+  Pose rel_pose;
   static geometry_msgs::msg::Transform tf;
   if(tf_buffer.canTransform(control_frame, frame, tf2::TimePointZero, 10ms))
   {
@@ -120,27 +144,15 @@ ControllerIO::Pose ControllerIO::relPose(const std::string &frame)
 void ControllerIO::poseSetpointCallback(const PoseStamped &pose)
 {
   // to Eigen
-  pose_error.from(pose.pose.position, pose.pose.orientation);
-  // to vehicle frame if needed
-  if(pose.header.frame_id != control_frame)
-  {
-    const auto rel_pose{relPose(pose.header.frame_id)};
-    pose_error.changeFrame(rel_pose);
-  }
-  pose_setpoint_time = get_clock()->now().seconds();
+  pose_setpoint.from(pose.pose.position, pose.pose.orientation);
+  pose_setpoint.frame = pose.header.frame_id;
+  pose_setpoint.time = get_clock()->now().seconds();
 }
 
 void ControllerIO::velSetpointCallback(const TwistStamped &twist)
 {
   // to Eigen
   twist2Eigen(twist.twist, vel_setpoint);
-
-  // to vehicle frame if needed
-  if(twist.header.frame_id != control_frame)
-  {
-    const auto R{relPose(twist.header.frame_id).R};
-    vel_setpoint.head<3>() = R * vel_setpoint.head<3>();
-    vel_setpoint.tail<3>() = R * vel_setpoint.tail<3>();
-  }
-  vel_setpoint_time = get_clock()->now().seconds();
+  vel_setpoint.frame = twist.header.frame_id;
+  vel_setpoint.time = get_clock()->now().seconds();
 }

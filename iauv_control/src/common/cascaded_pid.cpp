@@ -15,8 +15,6 @@ double* CascadedPID::gainFromName(const std::string &gain)
 
 std::string CascadedPID::tuneFromParam(const rclcpp::Parameter &param)
 {
-  if(!hasGain(param.get_name()))  return {};
-
   const auto name{param.get_name().substr(axis.size()+1)};
 
   if(name == "use_position" && param.get_type() == rclcpp::ParameterType::PARAMETER_BOOL)

@@ -66,6 +66,8 @@ public:
     return Gains{current.begin(), current.end()};
   }
 
+  inline double integralTerm() const {return cmd_integral;}
+
 private:
   double Kp{}, Kv{}, Ki{}, Kd{}, v_sat{}, u_sat{};
   double dt;
