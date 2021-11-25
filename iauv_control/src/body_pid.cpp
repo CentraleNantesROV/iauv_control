@@ -18,7 +18,9 @@ public:
     initControllers(ns, cmd_period);
       }
 
-  Vector6d computeWrench(const Vector6d &se3_error) override
+  Vector6d computeWrench(const Vector6d &se3_error,
+                         const Vector6d &vel,
+                         const Vector6d &vel_setpoint) override
   {
     static const std::array<std::string, 6> axis{"x","y","z","roll","pitch","yaw"};
 
@@ -35,9 +37,6 @@ public:
       pid.vel_sp = vel_setpoint[i];
       pid.position_sp = se3_error[i]; // current position is always 0 as we are in local frame
       wrench[i] = pid.update();
-
-      std::cout << " - " << axis[i] << " integral: " << pid.integralTerm() << std::endl;
-
     }
     return wrench;
   }

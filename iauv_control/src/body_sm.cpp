@@ -93,7 +93,9 @@ public:
     {return tuneFromParams(parameters);});
   }
 
-  Vector6d computeWrench(const Vector6d &se3_error) override
+  Vector6d computeWrench(const Vector6d &se3_error,
+                         const Vector6d &vel,
+                         const Vector6d &vel_setpoint) override
   {
     Vector6d S{vel_setpoint-vel};
 
@@ -113,7 +115,6 @@ public:
     }
 
     std::cout << "Current K: " << K.transpose() << std::endl;
-    std::cout << "sending wrench " << S.transpose() << std::endl;
 
     return S;
   }

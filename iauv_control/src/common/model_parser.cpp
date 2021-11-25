@@ -194,9 +194,9 @@ void IAUV::parseHydrodynamics(TiXmlElement* root, const std::string &base_link)
 
 void IAUV::compensate(Vector6d &wrench, const Eigen::Quaterniond &q, const Vector6d &vel) const
 {
-  // statics
-  const auto grav{q.inverse() * Eigen::Vector3d{0,0,-9.81*Mi(0,0)}};
-  const auto buoy{q.inverse() * Eigen::Vector3d{0,0,buoyancy}};
+  // statics from gravity and buoyancy in local frame
+  const auto grav{q.conjugate() * Eigen::Vector3d{0,0,-9.81*Mi(0,0)}};
+  const auto buoy{q.conjugate() * Eigen::Vector3d{0,0,buoyancy}};
   wrench.head<3>() -= grav + buoy;
   wrench.tail<3>() -= cog.cross(grav) + cob.cross(buoy);
 

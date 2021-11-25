@@ -4,6 +4,7 @@
 #include <rclcpp/node.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/wrench.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <tf2_ros/transform_listener.h>
@@ -17,6 +18,7 @@ namespace iauv_control
 
 using geometry_msgs::msg::PoseStamped;
 using geometry_msgs::msg::TwistStamped;
+using geometry_msgs::msg::Wrench;
 using nav_msgs::msg::Odometry;
 using ControlMode = iauv_control_msgs::srv::Control;
 
@@ -32,17 +34,25 @@ protected:
     Eigen::Vector3d t;
     Eigen::Quaterniond q;
 
+    Pose() {}
+    Pose(const Eigen::Vector3d &t, const Eigen::Quaterniond &q) : t(t), q(q) {}
+
     inline static void tf2Rotation(const geometry_msgs::msg::Quaternion &q, Eigen::Quaterniond &qe)
     {
       qe.x() = q.x;
       qe.y() = q.y;
       qe.z() = q.z;
       qe.w() = q.w;
-
+      qe.normalize();
     }
     inline Pose operator*(const Pose &other) const
     {
       return {t + q*other.t, q*other.q};
+    }
+    inline void rotate2(const Vector6d &src, Vector6d &dst) const
+    {
+      dst.head<3>() = q*src.head<3>();
+      dst.tail<3>() = q*src.tail<3>();
     }
     template<class Translation>
     void from(const Translation &t, const geometry_msgs::msg::Quaternion &q)
@@ -69,11 +79,12 @@ protected:
   // setpoints
   std::string control_frame;
   rclcpp::Subscription<PoseStamped>::SharedPtr pose_sub;
-  void poseSetpointCallback(const PoseStamped &pose);
   rclcpp::Subscription<TwistStamped>::SharedPtr vel_sub;
-  void velSetpointCallback(const TwistStamped &twist);
-  StampedSetpoint<Vector6d> vel_setpoint;
+  rclcpp::Subscription<Wrench>::SharedPtr wrench_sub;
+
   StampedSetpoint<Pose> pose_setpoint;
+  StampedSetpoint<Vector6d> vel_setpoint;
+  StampedSetpoint<Vector6d> wrench_setpoint;
 
   // odom estim
   rclcpp::Subscription<Odometry>::SharedPtr odom_sub;
@@ -91,7 +102,9 @@ protected:
   ThrusterAllocator allocator;
 
   // actual-controller-dependent
-  virtual Vector6d computeWrench(const Vector6d &se3_error) = 0;
+  virtual Vector6d computeWrench(const Vector6d &se3_error,
+                                 const Vector6d &vel,
+                                 const Vector6d &vel_setpoint) = 0;
 
   // timeouts
   double pose_setpoint_timeout{1};
